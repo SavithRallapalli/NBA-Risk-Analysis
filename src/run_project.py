@@ -11,7 +11,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import requests
-from sklearn.compose import TransformedTargetRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
@@ -66,8 +65,7 @@ def make_model_data(stats: pd.DataFrame, salaries: pd.DataFrame) -> pd.DataFrame
     stats["season_start"] = stats.season.str[:4].astype(int)
     salaries["season_start"] = salaries.season.str[:4].astype(int)
 
-    # Select player-level rows; duplicate team stints are combined by summing volume
-    # and minutes, while rate statistics are recalculated from the available rates.
+    # Keep one row if a player appears more than once in the stats file.
     stats = stats.sort_values(["games_played", "minutes"], ascending=False).drop_duplicates(
         ["player_key", "season"], keep="first"
     )
@@ -76,7 +74,7 @@ def make_model_data(stats: pd.DataFrame, salaries: pd.DataFrame) -> pd.DataFrame
     features = ["points_pg", "rebounds_pg", "assists_pg", "steals", "blocks", "turnovers",
                 "field_goal_pct", "three_point_pct", "free_throw_pct", "minutes_per_game",
                 "games_played", "games_played_share"]
-    # Stats source's defensive/counting columns are season totals; convert those to rates.
+    # Convert these season totals to per-game rates before fitting the model.
     for col in ["steals", "blocks", "turnovers"]:
         stats[col] = stats[col] / stats.games_played.replace(0, np.nan)
     stats["target_season_start"] = stats.season_start + 1
@@ -84,8 +82,7 @@ def make_model_data(stats: pd.DataFrame, salaries: pd.DataFrame) -> pd.DataFrame
     for flag in ["terminated", "two_way"]:
         if flag in salary.columns:
             salary = salary[~salary[flag].astype(str).str.lower().isin(["true", "1"])]
-    # A traded player's season can have one salary row per team. Add those
-    # amounts to estimate total season salary and keep one player-season label.
+    # Add team salary rows together so a trade does not create duplicate players.
     salary = (salary.groupby(["player_key", "season_start", "season"], as_index=False)
               .agg(salary=("salary", "sum"), player=("player", "first")))
     merged = stats.merge(salary, left_on=["player_key", "target_season_start"],
@@ -106,7 +103,7 @@ def main() -> None:
     feature_cols = ["points_pg", "rebounds_pg", "assists_pg", "steals", "blocks", "turnovers",
                     "field_goal_pct", "three_point_pct", "free_throw_pct", "minutes_per_game",
                     "games_played", "games_played_share"]
-    # Hold the latest salary year out; train only on earlier salary seasons.
+    # Train on earlier salary seasons and hold out the latest complete season.
     test_season = int(data.target_season_start.max())
     train = data[data.target_season_start < test_season]
     test = data[data.target_season_start == test_season]
@@ -134,14 +131,13 @@ def main() -> None:
     result["residual"] = result.salary - result.predicted_salary
     result.to_csv(OUT / "test_predictions.csv", index=False)
 
-    # Largest differences are review prompts, not findings of mispricing.
+    # Large gaps are worth checking; they do not prove a contract is mispriced.
     result["gap"] = result.salary - result.predicted_salary
     review = pd.concat([result.nlargest(10, "gap"), result.nsmallest(10, "gap")])
     review["comparison"] = np.where(review.gap > 0, "Salary above model estimate", "Salary below model estimate")
     review[["comparison", "player", "target_season", "salary", "predicted_salary", "gap"]].to_csv(
         OUT / "players_for_review.csv", index=False)
-    # Plot the five largest gaps in each direction. Positive means recorded
-    # salary exceeded the estimate; negative means it fell below the estimate.
+    # Show the five largest gaps above and below the model estimate.
     plot_rows = pd.concat([result.nlargest(5, "gap"), result.nsmallest(5, "gap")]).copy()
     plot_rows = plot_rows.sort_values("gap")
     fig, ax = plt.subplots(figsize=(9, 6))
@@ -156,9 +152,9 @@ def main() -> None:
     def money(value: float) -> str:
         return f"${value / 1_000_000:.1f}M"
     lines = [
-        "# Practical player comparisons",
+        "# Three-season baseline: player salary comparisons",
         "",
-        "These comparisons use the held-out 2025-26 salary season. A positive gap means recorded salary was above the model estimate; a negative gap means it was below. The model only uses prior-season box-score performance and availability. These are prompts for investigation, not conclusions about player value or whether a contract is fair.",
+        "This table compares the model with recorded salaries in the held-out 2025–26 season. A positive gap means salary was higher than the estimate; a negative gap means it was lower. The model uses prior-season box-score stats and availability, so the gaps point to questions for further review—not conclusions about contract value.",
         "",
         "## Salary above model estimate",
         "",
@@ -172,9 +168,9 @@ def main() -> None:
         "",
         "## How to use this shortlist",
         "",
-        "The largest positive gaps include established high-salary players whose contract levels are not fully explained by these box-score inputs. The largest negative gaps include several younger players on comparatively low recorded salaries despite strong prior-season statistical signals. Contract status, years of service, extensions, team context, injuries, awards, role, and salary-cap rules can explain much of this difference; they are not adequately controlled for in this model. A sensible next step is to add those variables and compare players within similar experience and contract groups before drawing any business conclusion.",
+        "Some established players had salaries well above the estimate; some younger players had salaries well below it despite strong prior stats. Contract status, years of service, extensions, team context, injuries, awards, role, and salary-cap rules may explain the gaps. This model does not account for those factors. The next step is to add them and compare players with similar contracts and experience.",
         "",
-        "The 2025-26 salary source can contain more than one team row for a player traded during the season. The pipeline sums those team amounts before comparing a player-season, avoiding duplicate entries and partial salary comparisons.",
+        "Some traded players have salary records for more than one team. The pipeline adds those amounts together before making the comparison.",
     ]
     (OUT / "practical_findings.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -197,7 +193,7 @@ def main() -> None:
     ax.set(xlabel="Ridge coefficient (salary dollars per standardized feature)", title="Model coefficients")
     fig.tight_layout(); fig.savefig(OUT / "feature_coefficients.png", dpi=160); plt.close(fig)
     print(pd.DataFrame(rows).to_string(index=False))
-    print(f"\nMerged rows: {len(data)}; train salary seasons: {sorted(train.target_season.unique())}; test season: {test_season}")
+    print(f"\nMatched player-seasons: {len(data)}; training seasons: {sorted(train.target_season.unique())}; holdout: {test_season}")
     print(f"Outputs: {OUT}")
 
 

@@ -1,20 +1,30 @@
 # NBA-Risk-Analysis
 
-Risk management techniques on NBA roster construction and team valuation. This repository contains an earlier 2022 salary/contract analysis and an expanded, season-ahead player compensation and on-court impact project.
+An NBA project on player salaries, roster construction, and team value.
 
-## Expanded player compensation model
+The repo started with a 2022 salary-versus-performance analysis. I’ve kept those notebooks and added a second project that uses several seasons of data to estimate player salaries one season ahead.
 
-The expanded analysis asks whether a player's next-season salary looks unusual given prior-season production, availability, age, experience, and an adjusted plus-minus impact estimate. It compares salary as a share of the cap, forms statistical-role cohorts, and flags large gaps with an approximate prediction range. These are prompts for review, not conclusions that a contract is fair or unfair.
+## Season-ahead salary model
+
+The main question is simple: **how much of a player's next-season salary can we explain with their recent performance, availability, age, experience, and estimated on-court impact?**
+
+The model predicts salary as a share of the salary cap, which makes comparisons across seasons more useful. It also groups players with similar statistical profiles and experience, then flags salaries outside an approximate prediction range. A flag means “take a closer look”; it does not mean a player is overpaid or underpaid.
 
 ### Results
 
-The historical dataset contains **4,578 player-season observations** spanning salary seasons 2015–16 through 2025–26. Rolling season-based validation selected a Random Forest model. On the 2025–26 holdout of 434 players, it achieved **$3.92M MAE**, **$5.49M RMSE**, and **0.844 R² on salary-cap share**, compared with **$9.66M MAE** for the training-median baseline. An approximate interval calibrated on one preceding season contained **92.6%** of the holdout salaries. Results describe this data snapshot; they do not establish fair market value.
+The dataset has **4,578 player-season records** from salary seasons 2015–16 through 2025–26. I used earlier seasons for rolling, time-based validation and held out 2025–26 (434 players) for the final comparison. Random Forest performed best in validation.
 
-Player statistics and salaries are joined using stable player IDs. Salary is normalized by the season's cap. The analysis uses prior-season NBA stats and OpenRAPM impact ratings, and groups players by learned statistical profiles and experience bands. The historical catalog and field definitions are documented by [`nba_data`](https://github.com/llimllib/nba_data) and its [data dictionary](https://github.com/llimllib/nba_data/blob/main/docs/DATA_DICTIONARY.md).
+| 2025–26 holdout | Random Forest | Median-salary baseline |
+|---|---:|---:|
+| MAE | $3.92M | $9.66M |
+| RMSE | $5.49M | $15.05M |
+| R² on salary-cap share | 0.844 | -0.173 |
 
-### Run the expanded analysis
+The model’s average absolute error was **59% lower** than the baseline. **92.6%** of held-out salaries fell within the approximate range, calibrated on the previous season. That range is useful for screening, but one test season cannot establish whether a contract is fair.
 
-Python 3.10+ is recommended. From the repository root:
+### Run it
+
+From the repository root, create an environment and install the packages:
 
 ```bash
 python3 -m venv .venv
@@ -23,29 +33,29 @@ pip install -r requirements.txt
 python src/run_value_analysis.py
 ```
 
-The first run needs network access to query the public historical NBA catalog and retrieve salary-cap data. It caches downloaded source data under `data/raw/`; pass `--refresh` to retrieve an updated snapshot. The original three-season Ridge baseline can be run with `python src/run_project.py`.
+The first run needs internet access to retrieve the historical stats, salary, impact, and salary-cap data. Downloads are cached under `data/raw/`; use `--refresh` to update them. Run the original three-season Ridge model with `python src/run_project.py`.
 
-### Key outputs
+### Useful files
 
-- `outputs/value_analysis/value_analysis.md` — detailed methodology, findings, examples, and limitations.
-- `outputs/value_analysis/holdout_metrics.csv` — model comparison on the latest completed season.
-- `outputs/value_analysis/player_value_review.csv` and `review_candidates.csv` — player-level comparisons and interval flags.
-- `outputs/value_analysis/role_clusters.csv` and `feature_importance.csv` — learned cohorts and model features.
-- `outputs/value_analysis/ai_research_brief.md` — model evidence cards and a copy-ready prompt for source-backed context research. It does not call an AI service automatically.
-- `outputs/final_consulting_writeup.md` — concise consulting-style summary.
+- `outputs/final_consulting_writeup.md` — short summary of the findings.
+- `outputs/value_analysis/value_analysis.md` — method, detailed results, examples, and limitations.
+- `outputs/value_analysis/holdout_metrics.csv` — comparison of the tested models.
+- `outputs/value_analysis/player_value_review.csv` — salary estimates, peer comparisons, and uncertainty ranges for the test season.
+- `outputs/value_analysis/review_candidates.csv` — players outside the approximate range.
+- `outputs/value_analysis/role_clusters.csv` and `feature_importance.csv` — player groups and model features.
+- `outputs/value_analysis/ai_research_brief.md` — model evidence and a prompt for checking player context with linked sources. It does not call an AI service.
 
-## Original NBA risk analysis materials
+## Original 2022 analysis
 
-The repository also retains the original 2022 contract-valuation datasets and notebooks:
+The original notebooks estimate a simple performance score, adjust it for games played, and compare it with salary. The score weights are exploratory choices, not official measures of player value.
 
-- `data/merged_nba_salary_stats_2022.csv`
-- `data/nba_contract_valuation_2022.csv`
-- `notebooks/01_data_collection.ipynb`
-- `notebooks/02_exploratory_analysis.ipynb`
-- `notebooks/03_salary_data.ipynb`
+- `notebooks/01_data_collection.ipynb` downloads season stats.
+- `notebooks/02_exploratory_analysis.ipynb` builds the availability-adjusted score.
+- `notebooks/03_salary_data.ipynb` joins salary and stats, then ranks players by the score and runs a simple regression.
+- `data/merged_nba_salary_stats_2022.csv` and `data/nba_contract_valuation_2022.csv` contain the original analysis data.
 
-## Data, attribution, and limitations
+## Data and limitations
 
-The expanded model draws historical box-score and salary data from `nba_data`, impact ratings from OpenRAPM, and salary-cap figures from the Mr-Bridge cap dataset. See the detailed report for exact source notes and limitations. The model omits many contract and team factors, including options, guaranteed money, years remaining, injuries, awards, and team needs. Its prediction range is approximate and calibrated on one season; a salary gap is not proof of overpayment or underpayment.
+The expanded model uses NBA player stats and Basketball-Reference salary records distributed through [`nba_data`](https://github.com/llimllib/nba_data), OpenRAPM impact ratings, and salary-cap figures from the [Mr-Bridge dataset](https://huggingface.co/datasets/Mr-Bridge/nba-salary-cap-contracts-2016-2026). See the [data dictionary](https://github.com/llimllib/nba_data/blob/main/docs/DATA_DICTIONARY.md) and detailed report for source notes.
 
-Please retain attribution to the data publishers when sharing derived outputs.
+The model does not include every factor that affects a contract, such as options, guaranteed money, years remaining, awards, injuries, or team needs. Its salary estimate is a statistical benchmark, not a counterfactual market price. Keep source attribution when sharing the data or results.

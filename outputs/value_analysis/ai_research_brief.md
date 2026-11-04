@@ -1,14 +1,14 @@
-# AI-assisted context research brief
+# Player context research prompt
 
-This file contains model outputs only. Use it as input to a web-enabled research assistant to find possible explanations for salary gaps. The model did not retrieve contract news or decide that any salary is fair or unfair.
+These cards show what the model found; they do not explain why the gap exists. Copy the prompt and cards into a web-enabled AI assistant to check contract terms, awards, injuries, or team changes. The analysis itself does not make that research call.
 
 ## Research prompt
 
-For each player below, investigate public context that could explain why recorded 2025-26 salary differs from this project's estimate. Search for and cite direct, reliable sources: NBA/team announcements, the NBA/NBPA CBA or official salary-cap material, and reputable reporting for contract details, options, extensions, awards, availability, role, and team changes. Distinguish verified facts from hypotheses. Explain what the model omitted that could account for the gap. Do not call a player overpaid/underpaid or infer fair value. If a fact cannot be verified with a link, say so. Keep the answer to a short evidence table with columns: player, verified context, source link, how it could relate to the model gap, confidence/unknowns.
+For each player, look for reliable public information that may help explain the salary gap. Use NBA or team announcements and CBA documents for contract details; use reputable reporting for injuries, awards, role, or team changes. Cite every fact with a link. Separate confirmed facts from possible explanations, and say when you cannot verify something. Do not label anyone overpaid or underpaid. Return a short table with: player, verified fact, source, possible connection to the gap, and what remains uncertain.
 
 ## Model evidence cards
 
-Interpret gap as recorded salary minus model estimate. Positive means recorded salary is above the estimate; negative means below. The estimate predicts salary share of cap from prior-season stats, an impact rating, age, and experience. The interval is calibrated on one earlier season and is approximate.
+Gap means recorded salary minus the model estimate: positive is above the estimate, negative is below. The model uses prior-season stats, impact, age, and experience. Its range is approximate and calibrated on one earlier season.
 
 | Player | Salary | Model estimate | Gap | Approximate model range | Peer median share | Prior-season WOSA | Prior RAPM | Flag |
 |---|---:|---:|---:|---:|---:|---:|---:|---|

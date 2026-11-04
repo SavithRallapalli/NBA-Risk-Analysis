@@ -1,4 +1,4 @@
-"""Historical, salary-cap-normalized player compensation/value analysis."""
+"""Compare next-season player pay with prior-season stats and impact."""
 from __future__ import annotations
 
 import os
@@ -103,13 +103,12 @@ def fetch_source_data(refresh: bool) -> tuple[pd.DataFrame, pd.DataFrame]:
         CAP_PATH.write_bytes(response.content)
     cap = pd.read_csv(CAP_PATH)
     cap = cap[["season_year", "season", "salary_cap"]].copy()
-    # Salary file uses NBA season end year; cap file keys by season start year.
+    # Salary data uses the season's end year; cap data uses its start year.
     cap["target_season"] = cap.season_year + 1
     cap["salary_cap"] = pd.to_numeric(cap.salary_cap, errors="coerce")
     data = data.merge(cap[["target_season", "salary_cap"]], on="target_season", how="inner")
     data = data.dropna(subset=["salary", "salary_cap"])
-    # 2026-27 is in progress as of this project's data snapshot; test on the
-    # latest completed salary season rather than partial current-season stats.
+    # Leave out 2026-27 because it is still in progress in this data snapshot.
     data = data[data.target_season <= 2026].copy()
     data["salary_cap_share"] = data.salary / data.salary_cap
     data = data[data.salary_cap_share.between(0, 1)].copy()
@@ -207,7 +206,7 @@ def cluster_descriptions(train: pd.DataFrame) -> pd.DataFrame:
         means = g[ROLE_FEATURES].median(numeric_only=True)
         desc = []
         for feature, label in [("usage_pct", "usage"), ("assist_pct", "playmaking"), ("rebound_pct", "rebounding"), ("true_shooting_pct", "shooting efficiency")]:
-            # Use within-training quartiles to describe a cluster's profile plainly.
+            # Describe each group by the stats that stand out in the training data.
             q75 = train[feature].quantile(.75)
             q25 = train[feature].quantile(.25)
             if means[feature] >= q75:
@@ -234,9 +233,9 @@ def write_report(metrics_df: pd.DataFrame, selected: str, cv: pd.DataFrame, revi
         "",
         "## Executive summary",
         "",
-        f"This analysis expands salary prediction into a context-aware screening tool. It combines **{len(data):,} player-season observations** across salary seasons {first_start}-{str(first_start+1)[-2:]} through {last_end-1}-{str(last_end)[-2:]}, normalizes salary by the season's salary cap, adds a published adjusted plus-minus impact metric, groups players by statistical role, and estimates a broad prediction range. The latest completed salary season is held out for evaluation.",
+        f"I matched **{len(data):,} player-seasons** from salary seasons {first_start}-{str(first_start+1)[-2:]} through {last_end-1}-{str(last_end)[-2:]}. The model uses prior-season stats and impact ratings to estimate next-season salary as a share of the cap. I held out the latest completed season for evaluation.",
         "",
-        f"Rolling time-based validation selected **{selected}**. On the 2025-26 holdout, the model's MAE was **${selected_metrics.MAE_salary_dollars/1e6:.2f}M** versus **${baseline.MAE_salary_dollars/1e6:.2f}M** for a training-median baseline ({reduction:.1f}% lower). R² on salary-cap share was **{selected_metrics.R2_cap_share:.3f}**. The approximate 90% prediction band is **±{calibration_band*100:.2f} percentage points of the cap** (about ${calibration_band*cap_value/1e6:.1f}M in 2025-26 dollars).",
+        f"I compared Ridge and Random Forest using rolling season splits. **{selected}** had the lower validation error. On the 2025–26 holdout, its MAE was **${selected_metrics.MAE_salary_dollars/1e6:.2f}M**, versus **${baseline.MAE_salary_dollars/1e6:.2f}M** for the training-median baseline—a **{reduction:.1f}% reduction**. R² on salary-cap share was **{selected_metrics.R2_cap_share:.3f}**. The approximate prediction range is **±{calibration_band*100:.2f} percentage points of the cap** (about ${calibration_band*cap_value/1e6:.1f}M that season).",
         "",
         "## Holdout model comparison",
         "",
@@ -247,17 +246,17 @@ def write_report(metrics_df: pd.DataFrame, selected: str, cv: pd.DataFrame, revi
         lines.append(f"| {metric.model} | ${metric.MAE_salary_dollars/1e6:.2f}M | ${metric.RMSE_salary_dollars/1e6:.2f}M | {metric.MAE_cap_share_percentage_points:.2f} pp | {metric.R2_cap_share:.3f} |")
     lines += [
         "",
-        f"Of the {len(reviews)} held-out players, **{coverage:.1f}%** fell inside the approximate band and {len(reviews)-int((reviews.interval_status == 'within approximate range').sum())} fell outside. Coverage is close to the nominal 90%, but it is measured on one test season after calibrating on one earlier season; it is not a formal guarantee under future season shifts.",
+        f"The range covered **{coverage:.1f}%** of the {len(reviews)} holdout players; {len(reviews)-int((reviews.interval_status == 'within approximate range').sum())} fell outside it. This is close to the 90% target, but it is based on one holdout season and one calibration season.",
         "",
-        "## What the model compares",
+        "## What went into the model",
         "",
-        "For each player, the model uses prior-season age and experience, availability, minutes, scoring and efficiency rates, and OpenRAPM offensive, defensive, and overall ratings. It predicts next-season salary as a share of the salary cap, so an identical contract percentage is comparable across seasons with different cap levels. Salary records are summed across team rows for a player-season.",
+        "The inputs include prior-season age, experience, games played, minutes, scoring and shooting rates, and OpenRAPM impact ratings. The target is next-season salary as a share of the cap. Salary entries from multiple teams are added together for traded players.",
         "",
-        "Six unsupervised clusters summarize statistical roles from usage, playmaking, rebounding, shooting efficiency, minutes, and impact rating. Salary comparisons use players in the same role cluster and experience band when the peer sample is large enough; otherwise the comparison falls back to the role cluster or the training-set median.",
+        "K-means groups players into six statistical profiles using usage, assists, rebounding, shooting efficiency, minutes, and impact. Each player is compared with the same profile and experience band when there are enough peers. Smaller groups fall back to a broader comparison.",
         "",
         "## Review candidates",
         "",
-        "A player is flagged only when observed salary falls outside an approximate range calibrated on the preceding salary season. The direction indicates where salary sits relative to the performance-based estimate; it is not a verdict on contract fairness.",
+        "A player is flagged when recorded salary falls outside the approximate range calibrated on the previous season. The flag shows how salary compares with the model; it does not say whether a contract is fair.",
         "",
         "| Player | Salary season | Salary | Model estimate | Peer median | Prior WOSA | Interval flag |",
         "|---|---:|---:|---:|---:|---:|---|",
@@ -268,20 +267,20 @@ def write_report(metrics_df: pd.DataFrame, selected: str, cv: pd.DataFrame, revi
         lines.append("| No held-out player fell outside the approximate prediction band. | — | — | — | — | — | — |")
     lines += [
         "",
-        "## Interpretation and next action",
+        "## What to do with the flags",
         "",
-        "The tool narrows the question from ‘Does salary look different from a basic statistical forecast?’ to ‘How unusual is salary among players with a similar statistical profile and experience, and how uncertain is that estimate?’ A next review should check contract years, guaranteed money, options, service-time rules, awards, injuries, and team circumstances using linked primary sources. This repository creates the evidence fields and candidate list; it does not automatically retrieve or verify contract/news context, and no generative-AI conclusion is presented as fact.",
+        "Use the list to decide what to investigate next. Check contract length, guaranteed money, options, years of service, awards, injuries, and team circumstances. The report does not fetch or verify those details. The AI research brief gives a web-enabled assistant the model results and asks it to cite its sources.",
         "",
-        "OpenRAPM's `wins over starter average` (WOSA) is also included as a separate impact lens. It estimates regular-season wins added over an average starter; it is not converted into dollars here. A salary-to-WOSA ratio is not a true return-on-investment measure without an explicit, validated value-per-win assumption.",
+        "OpenRAPM's `wins over starter average` (WOSA) is shown as a separate impact measure. It estimates regular-season wins above an average starter. I have not converted wins into dollars, so the report does not claim a financial return on salary.",
         "",
-        "## Limits",
+        "## Limits to keep in mind",
         "",
-        "- The outcome is salary as a share of the cap, not a counterfactual fair-market salary.",
-        "- Salary caps, contract status, options, years remaining, team needs, market size, awards, and injury detail are not fully modeled.",
-        "- The role groups are statistical clusters, not official positions or scouting archetypes.",
-        "- The latest completed season is one temporal holdout; the calibration band comes from one preceding season and is approximate under year-to-year distribution shifts.",
-        "- OpenRAPM is a published adjusted plus-minus estimate and carries model uncertainty. Its historical ratings are periodically recomputed by the publisher.",
-        "- Salary data is sourced from Basketball-Reference team salary tables via the catalog. Payroll accounting can include salary obligations to former teams after trades/buyouts and can differ from contract cash flow.",
+        "- The model estimates salary as a share of the cap; it does not estimate a fair-market price.",
+        "- It does not include contract options, guaranteed money, years remaining, team needs, awards, or detailed injury history.",
+        "- The six groups describe statistical profiles; they are not official positions or scouting labels.",
+        "- The prediction range was calibrated on one season. Results may shift as the league and salary cap change.",
+        "- OpenRAPM is an estimate, and its historical ratings can be updated by the publisher.",
+        "- Salary records can include amounts owed by multiple teams after a trade or buyout. They may differ from a player's contract cash flow.",
         "",
         "## Source notes",
         "",
@@ -296,17 +295,17 @@ def write_report(metrics_df: pd.DataFrame, selected: str, cv: pd.DataFrame, revi
 def write_ai_research_brief(candidates: pd.DataFrame) -> None:
     selected = candidates.head(8)
     lines = [
-        "# AI-assisted context research brief",
+        "# Player context research prompt",
         "",
-        "This file contains model outputs only. Use it as input to a web-enabled research assistant to find possible explanations for salary gaps. The model did not retrieve contract news or decide that any salary is fair or unfair.",
+        "These cards show what the model found; they do not explain why the gap exists. Copy the prompt and cards into a web-enabled AI assistant to check contract terms, awards, injuries, or team changes. The analysis itself does not make that research call.",
         "",
         "## Research prompt",
         "",
-        "For each player below, investigate public context that could explain why recorded 2025-26 salary differs from this project's estimate. Search for and cite direct, reliable sources: NBA/team announcements, the NBA/NBPA CBA or official salary-cap material, and reputable reporting for contract details, options, extensions, awards, availability, role, and team changes. Distinguish verified facts from hypotheses. Explain what the model omitted that could account for the gap. Do not call a player overpaid/underpaid or infer fair value. If a fact cannot be verified with a link, say so. Keep the answer to a short evidence table with columns: player, verified context, source link, how it could relate to the model gap, confidence/unknowns.",
+        "For each player, look for reliable public information that may help explain the salary gap. Use NBA or team announcements and CBA documents for contract details; use reputable reporting for injuries, awards, role, or team changes. Cite every fact with a link. Separate confirmed facts from possible explanations, and say when you cannot verify something. Do not label anyone overpaid or underpaid. Return a short table with: player, verified fact, source, possible connection to the gap, and what remains uncertain.",
         "",
         "## Model evidence cards",
         "",
-        "Interpret gap as recorded salary minus model estimate. Positive means recorded salary is above the estimate; negative means below. The estimate predicts salary share of cap from prior-season stats, an impact rating, age, and experience. The interval is calibrated on one earlier season and is approximate.",
+        "Gap means recorded salary minus the model estimate: positive is above the estimate, negative is below. The model uses prior-season stats, impact, age, and experience. Its range is approximate and calibrated on one earlier season.",
         "",
         "| Player | Salary | Model estimate | Gap | Approximate model range | Peer median share | Prior-season WOSA | Prior RAPM | Flag |",
         "|---|---:|---:|---:|---:|---:|---:|---:|---|",
@@ -336,16 +335,15 @@ def main() -> None:
     selected, cv = time_series_model_selection(fit_pool)
     cv.to_csv(OUT / "rolling_validation.csv", index=False)
 
-    # One-season calibration of absolute prediction errors; interpret as an
-    # approximate range because temporal shifts weaken exchangeability.
+    # Use the previous season's errors to set an approximate prediction range.
+    # One calibration season cannot guarantee future coverage.
     cal_train_r, cal_r, _ = attach_roles(fit_pool, calibration)
     cal_model = make_model(selected)
     cal_model.fit(cal_train_r[FEATURES + CAT_FEATURES], cal_train_r.salary_cap_share)
     cal_pred = np.clip(cal_model.predict(cal_r[FEATURES + CAT_FEATURES]), 0, 0.5)
     band = float(np.quantile(np.abs(cal_r.salary_cap_share.to_numpy() - cal_pred), .90, method="higher"))
 
-    # Final train and later-season test: all preprocessing and role clustering
-    # are fitted only on the earlier player-seasons.
+    # Refit preprocessing and role groups on earlier seasons, then score the holdout.
     train_r, test_r, clusterer = attach_roles(final_train, test)
     test_models = {}
     metrics_rows = []
@@ -382,7 +380,7 @@ def main() -> None:
     )
     review = review.sort_values("salary_gap", ascending=False)
     review.to_csv(OUT / "player_value_review.csv", index=False)
-    # Only clear interval exceptions are termed candidates; keep largest cases.
+    # Keep players whose recorded salary falls outside the approximate range.
     candidates = review[review.interval_status != "within approximate range"].copy()
     candidates["review_distance"] = np.where(
         candidates.interval_status == "above approximate range",
@@ -392,7 +390,7 @@ def main() -> None:
     candidates = candidates.sort_values("review_distance", ascending=False)
     candidates.to_csv(OUT / "review_candidates.csv", index=False)
 
-    # Learned feature importance from the selected model.
+    # Save which features mattered most to the selected model.
     pre = model.named_steps["features"]
     names = pre.get_feature_names_out()
     estimator = model.named_steps["model"]
@@ -403,12 +401,11 @@ def main() -> None:
         "importance", ascending=False).to_csv(OUT / "feature_importance.csv", index=False)
     cluster_descriptions(train_r).to_csv(OUT / "role_clusters.csv", index=False)
 
-    # The top prior-impact/cap-spend rates are descriptive screening values,
-    # requiring positive WOSA and at least 1,000 RAPM possessions.
+    # Keep the impact-to-cap shortlist to positive WOSA and 1,000+ possessions.
     impact = review[(review.wins_over_starter_average > 0) & (review.rapm_possessions >= 1000)].copy()
     impact.nlargest(20, "impact_per_cap_point").to_csv(OUT / "impact_per_cap_shortlist.csv", index=False)
 
-    # Visual checks and compact review charts.
+    # Plot the holdout results and the largest salary gaps.
     cap_test = float(test_r.salary_cap.iloc[0])
     fig, ax = plt.subplots(figsize=(7, 6))
     actual = review.salary_cap_share * 100
@@ -431,7 +428,7 @@ def main() -> None:
 
     write_report(metric_df, selected, cv, review, data, band, cap_test)
     write_ai_research_brief(candidates)
-    print("Selected by expanding-window validation:", selected)
+    print("Selected model:", selected)
     print("\nHoldout metrics (2025-26):")
     print(metric_df.to_string(index=False))
     print(f"\nCalibration band: ±{band*100:.2f} cap percentage points; candidates: {len(candidates)}")

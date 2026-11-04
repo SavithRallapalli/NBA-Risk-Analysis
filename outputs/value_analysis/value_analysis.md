@@ -2,9 +2,9 @@
 
 ## Executive summary
 
-This analysis expands salary prediction into a context-aware screening tool. It combines **4,578 player-season observations** across salary seasons 2015-16 through 2025-26, normalizes salary by the season's salary cap, adds a published adjusted plus-minus impact metric, groups players by statistical role, and estimates a broad prediction range. The latest completed salary season is held out for evaluation.
+I matched **4,578 player-seasons** from 2015–16 through 2025–26. The model uses prior-season stats and impact ratings to estimate next-season salary as a share of the cap. I held out the latest completed season for evaluation.
 
-Rolling time-based validation selected **Random forest**. On the 2025-26 holdout, the model's MAE was **$3.92M** versus **$9.66M** for a training-median baseline (59.4% lower). R² on salary-cap share was **0.844**. The approximate 90% prediction band is **±6.38 percentage points of the cap** (about $9.9M in 2025-26 dollars).
+I compared Ridge and Random Forest using rolling season splits. **Random Forest** had the lower validation error. On the 2025–26 holdout, its MAE was **$3.92M**, versus **$9.66M** for the training-median baseline—a **59.4% reduction**. R² on salary-cap share was **0.844**. The approximate prediction range is **±6.38 percentage points of the cap** (about $9.9M that season).
 
 ## Holdout model comparison
 
@@ -14,17 +14,17 @@ Rolling time-based validation selected **Random forest**. On the 2025-26 holdout
 | Random forest | $3.92M | $5.49M | 2.53 pp | 0.844 |
 | Training median baseline | $9.66M | $15.05M | 6.25 pp | -0.173 |
 
-Of the 434 held-out players, **92.6%** fell inside the approximate band and 32 fell outside. Coverage is close to the nominal 90%, but it is measured on one test season after calibrating on one earlier season; it is not a formal guarantee under future season shifts.
+The range covered **92.6%** of the 434 holdout players; 32 fell outside it. That is close to the 90% target, but the range is based on one holdout season and one calibration season.
 
-## What the model compares
+## What went into the model
 
-For each player, the model uses prior-season age and experience, availability, minutes, scoring and efficiency rates, and OpenRAPM offensive, defensive, and overall ratings. It predicts next-season salary as a share of the salary cap, so an identical contract percentage is comparable across seasons with different cap levels. Salary records are summed across team rows for a player-season.
+Inputs include prior-season age, experience, games played, minutes, scoring and shooting rates, and OpenRAPM impact ratings. The target is next-season salary as a share of the cap. Salary entries from multiple teams are added together for traded players.
 
-Six unsupervised clusters summarize statistical roles from usage, playmaking, rebounding, shooting efficiency, minutes, and impact rating. Salary comparisons use players in the same role cluster and experience band when the peer sample is large enough; otherwise the comparison falls back to the role cluster or the training-set median.
+K-means groups players into six statistical profiles using usage, assists, rebounding, shooting efficiency, minutes, and impact. Each player is compared with the same profile and experience band when there are enough peers. Smaller groups fall back to a broader comparison.
 
 ## Review candidates
 
-A player is flagged only when observed salary falls outside an approximate range calibrated on the preceding salary season. The direction indicates where salary sits relative to the performance-based estimate; it is not a verdict on contract fairness.
+A player is flagged when recorded salary falls outside the approximate range calibrated on the previous season. The flag shows how salary compares with the model; it does not say whether a contract is fair.
 
 | Player | Salary season | Salary | Model estimate | Peer median | Prior WOSA | Interval flag |
 |---|---:|---:|---:|---:|---:|---|
@@ -37,20 +37,20 @@ A player is flagged only when observed salary falls outside an approximate range
 | Jalen Suggs | 2025-26 | $35.0M | $23.3M | 9.7% cap | -0.1 | above approximate range |
 | Marcus Smart | 2025-26 | $19.9M | $8.3M | 8.2% cap | -0.1 | above approximate range |
 
-## Interpretation and next action
+## What to do with the flags
 
-The tool narrows the question from ‘Does salary look different from a basic statistical forecast?’ to ‘How unusual is salary among players with a similar statistical profile and experience, and how uncertain is that estimate?’ A next review should check contract years, guaranteed money, options, service-time rules, awards, injuries, and team circumstances using linked primary sources. This repository creates the evidence fields and candidate list; it does not automatically retrieve or verify contract/news context, and no generative-AI conclusion is presented as fact.
+Use the list to decide what to investigate next. Check contract length, guaranteed money, options, years of service, awards, injuries, and team circumstances. The report does not fetch or verify those details. The AI research brief gives a web-enabled assistant the model results and asks it to cite its sources.
 
-OpenRAPM's `wins over starter average` (WOSA) is also included as a separate impact lens. It estimates regular-season wins added over an average starter; it is not converted into dollars here. A salary-to-WOSA ratio is not a true return-on-investment measure without an explicit, validated value-per-win assumption.
+OpenRAPM's `wins over starter average` (WOSA) is shown as a separate impact measure. It estimates regular-season wins above an average starter. I have not converted wins into dollars, so the report does not claim a financial return on salary.
 
-## Limits
+## Limits to keep in mind
 
-- The outcome is salary as a share of the cap, not a counterfactual fair-market salary.
-- Salary caps, contract status, options, years remaining, team needs, market size, awards, and injury detail are not fully modeled.
-- The role groups are statistical clusters, not official positions or scouting archetypes.
-- The latest completed season is one temporal holdout; the calibration band comes from one preceding season and is approximate under year-to-year distribution shifts.
-- OpenRAPM is a published adjusted plus-minus estimate and carries model uncertainty. Its historical ratings are periodically recomputed by the publisher.
-- Salary data is sourced from Basketball-Reference team salary tables via the catalog. Payroll accounting can include salary obligations to former teams after trades/buyouts and can differ from contract cash flow.
+- The model estimates salary as a share of the cap; it does not estimate a fair-market price.
+- It does not include contract options, guaranteed money, years remaining, team needs, awards, or detailed injury history.
+- The six groups describe statistical profiles; they are not official positions or scouting labels.
+- The prediction range was calibrated on one season. Results may shift as the league and salary cap change.
+- OpenRAPM is an estimate, and its historical ratings can be updated by the publisher.
+- Salary records can include amounts owed by multiple teams after a trade or buyout. They may differ from a player's contract cash flow.
 
 ## Source notes
 
