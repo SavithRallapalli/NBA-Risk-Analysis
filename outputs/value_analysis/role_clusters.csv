@@ -1,0 +1,7 @@
+role_cluster,players,cluster_description,median_usage_pct,median_assist_pct,median_rebound_pct,median_true_shooting_pct,median_minutes_per_game,median_rapm_rating
+0,581,"high playmaking, lower rebounding",0.202,0.249,0.056,0.525,24.456282051282052,-1.4049999999999998
+1,1052,mixed statistical profile,0.15,0.084,0.077,0.545,15.759529472810295,-2.2
+2,1019,mixed statistical profile,0.182,0.104,0.073,0.559,28.1655625,-0.31
+3,749,"high rebounding, high shooting efficiency",0.166,0.083,0.149,0.6,19.9692816091954,0.16
+4,327,lower shooting efficiency,0.169,0.105,0.068,0.444,8.517549019607843,-4.529999999999999
+5,416,"high usage, high playmaking",0.28,0.253,0.083,0.581,34.18001500234412,2.955

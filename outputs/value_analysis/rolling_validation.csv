@@ -1,0 +1,3 @@
+model,rolling_cv_folds,mean_cv_MAE_cap_share
+Random forest,4,0.026890832476394073
+Ridge (L2),4,0.035696282757747805
