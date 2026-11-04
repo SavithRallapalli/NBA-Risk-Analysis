@@ -1,6 +1,9 @@
 .venv/
+venv/
 .mplconfig/
 __pycache__/
 *.py[cod]
 .DS_Store
-data/raw/*.csv
+.ipynb_checkpoints/
+.vscode/
+data/raw/
